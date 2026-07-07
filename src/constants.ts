@@ -20,6 +20,13 @@ export const MAX_FACT_VALUE_CHARS = 2000;
 export const FACT_KEY_PATTERN = /^[a-z][a-z0-9_.]*[a-z0-9]$/;
 export const CONFIDENCE_TIE_BAND = 0.1;
 
+// Fact lifecycle: extracted facts decay unless reinforced (re-emitted by the
+// extractor); user-stated facts never decay. Time alone is not the staleness
+// signal — reinforcement is.
+export const FACT_FRESH_DAYS = 90; // grace period before decay starts
+export const FACT_DECAY_RATE = 0.01; // per day past the grace period
+export const FACT_PRUNE_DAYS = 365; // unreinforced extracted facts tombstone after this
+
 // This is an open-source plugin: NO personal endpoints in code. URL/model/path values
 // are REQUIRED via environment; getConfig() throws naming the missing var.
 export const DEFAULT_SOURCE = "auto"; // env CLAWMARK_SOURCE: auto | lcm | transcripts

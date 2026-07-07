@@ -6,6 +6,7 @@ import { JOB_EVERY_N_MESSAGES } from "./constants.js";
 import { buildContext } from "./context.js";
 import { type Db, openDb, rotateEvents } from "./db.js";
 import { createEmbeddingClient, type EmbeddingClient } from "./embeddings.js";
+import { pruneStaleFacts } from "./facts.js";
 import { runExtractor } from "./extractor.js";
 import { runIndexer } from "./indexer.js";
 import { type MessageSource, selectSource } from "./sources/source.js";
@@ -38,9 +39,12 @@ const entry: PluginEntry = definePluginEntry({
         const { db, source, embedder, config } = runtime;
         const indexed = await runIndexer(db, source, embedder);
         const extracted = await runExtractor(db, source, config, opts);
+        const pruned = pruneStaleFacts(db);
         rotateEvents(db);
-        if (indexed.indexed > 0 || extracted.written > 0) {
-          log.info(`jobs: indexed ${indexed.indexed} messages, wrote ${extracted.written} facts`);
+        if (indexed.indexed > 0 || extracted.written > 0 || pruned > 0) {
+          log.info(
+            `jobs: indexed ${indexed.indexed} messages, wrote ${extracted.written} facts, pruned ${pruned} stale facts`,
+          );
         }
       } catch (err) {
         log.error(`background jobs failed: ${String(err)}`);
@@ -102,7 +106,14 @@ const entry: PluginEntry = definePluginEntry({
       try {
         if (!runtime) return;
         const { db, source, embedder, config } = runtime;
-        const block = await buildContext(db, source, embedder, event.prompt ?? "", config.recallLimit);
+        const block = await buildContext(
+          db,
+          source,
+          embedder,
+          event.prompt ?? "",
+          config.recallLimit,
+          config.confidenceThreshold,
+        );
         if (!block) return;
         return { prependContext: block };
       } catch (err) {

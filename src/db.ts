@@ -8,6 +8,7 @@ export type Db = Database.Database;
 export type EventType =
   | "create"
   | "update"
+  | "reinforce"
   | "delete"
   | "conflict_skip"
   | "injection_blocked"

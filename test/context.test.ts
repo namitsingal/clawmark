@@ -11,14 +11,14 @@ const GUARD_CLOSE = "[End Memory]";
 describe("buildContext", () => {
   it("returns empty string when there is nothing to inject", async () => {
     const db = openDb(":memory:");
-    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "a question", 6);
+    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "a question", 6, 0.8);
     expect(block).toBe("");
   });
 
   it("wraps content in guard markers and includes facts", async () => {
     const db = openDb(":memory:");
     setFact(db, "pref.editor", "prefers dark mode everywhere", 1.0, "user", 0.8);
-    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "", 6);
+    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "", 6, 0.8);
     expect(block.startsWith(GUARD_OPEN)).toBe(true);
     expect(block.endsWith(GUARD_CLOSE)).toBe(true);
     expect(block).toContain("pref.editor: prefers dark mode everywhere");
@@ -32,10 +32,10 @@ describe("buildContext", () => {
     await runIndexer(db, source, embedder);
     setFact(db, "pref.a", "some stored fact", 1.0, "user", 0.8);
 
-    const noQuery = await buildContext(db, source, embedder, "", 6);
+    const noQuery = await buildContext(db, source, embedder, "", 6, 0.8);
     expect(noQuery).not.toContain("Recalled context");
 
-    const withQuery = await buildContext(db, source, embedder, "espresso dose grams machine", 6);
+    const withQuery = await buildContext(db, source, embedder, "espresso dose grams machine", 6, 0.8);
     expect(withQuery).toContain("Recalled context");
     expect(withQuery).toContain("espresso");
   });
@@ -45,7 +45,7 @@ describe("buildContext", () => {
     for (let i = 0; i < 200; i++) {
       setFact(db, `pref.item${i}`, "x".repeat(120), 1.0, "user", 0.8);
     }
-    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "", 6);
+    const block = await buildContext(db, memorySource([]), fakeEmbedder(), "", 6, 0.8);
     expect(block.length).toBeLessThanOrEqual(12_100);
     expect(block.endsWith(GUARD_CLOSE)).toBe(true);
   });

@@ -1,7 +1,7 @@
 import { FACTS_CAP_CHARS, TOTAL_CAP_CHARS } from "./constants.js";
 import type { Db } from "./db.js";
 import type { EmbeddingClient } from "./embeddings.js";
-import { listFacts } from "./facts.js";
+import { effectiveConfidence, listFacts } from "./facts.js";
 import { recall } from "./recall.js";
 import type { MessageSource } from "./sources/source.js";
 
@@ -21,10 +21,13 @@ export async function buildContext(
   embedder: EmbeddingClient,
   query: string,
   recallLimit: number,
+  confidenceThreshold: number,
 ): Promise<string> {
   const sections: string[] = [];
 
-  const facts = listFacts(db);
+  // Decayed-out facts stay stored and auditable; they just stop injecting.
+  const now = Date.now();
+  const facts = listFacts(db).filter((f) => effectiveConfidence(f, now) >= confidenceThreshold);
   if (facts.length > 0) {
     const lines: string[] = ["## Facts"];
     let used = 0;

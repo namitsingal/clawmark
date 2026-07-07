@@ -51,7 +51,7 @@ describe("integration: fixture LCM → index + extract → context", () => {
     });
     expect(extracted.written).toBe(1);
 
-    const block = await buildContext(db, source, embedder, "tabs or spaces preference in projects", 6);
+    const block = await buildContext(db, source, embedder, "tabs or spaces preference in projects", 6, 0.8);
     expect(block).toContain("pref.indentation: prefers tabs over spaces");
     expect(block).toContain("Recalled context");
     expect(block).toContain("tabs over spaces in every project");

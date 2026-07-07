@@ -1,6 +1,9 @@
 import {
   CONFIDENCE_TIE_BAND,
+  FACT_DECAY_RATE,
+  FACT_FRESH_DAYS,
   FACT_KEY_PATTERN,
+  FACT_PRUNE_DAYS,
   INJECTION_PATTERNS,
   MAX_FACT_KEY_LEN,
   MAX_FACT_VALUE_CHARS,
@@ -10,7 +13,7 @@ import { type Db, logEvent } from "./db.js";
 export type FactSource = "user" | "extracted";
 
 export type SetFactResult =
-  | { ok: true; action: "create" | "update" }
+  | { ok: true; action: "create" | "update" | "reinforce" }
   | { ok: false; code: "KEY_FORMAT" | "VALUE_SIZE" | "CONFIDENCE" | "INJECTION" | "CONFLICT_SKIP"; reason: string };
 
 export interface FactRow {
@@ -51,6 +54,19 @@ export function setFact(
   const existing = db
     .prepare("SELECT key, value, confidence, source FROM facts WHERE key = ? AND is_deleted = 0")
     .get(key) as Pick<FactRow, "key" | "value" | "confidence" | "source"> | undefined;
+
+  // Reinforcement: the extractor re-observing an unchanged value is the staleness
+  // antidote — refresh updated_at (and keep the higher confidence) instead of
+  // running the conflict ladder, so the fact's decay clock resets.
+  if (existing && source === "extracted" && value.trim().toLowerCase() === existing.value.trim().toLowerCase()) {
+    db.prepare("UPDATE facts SET confidence = ?, updated_at = ? WHERE key = ?").run(
+      Math.max(existing.confidence, clamped),
+      new Date().toISOString(),
+      key,
+    );
+    logEvent(db, { eventType: "reinforce", memoryKey: key, oldValue: existing.value, source });
+    return { ok: true, action: "reinforce" };
+  }
 
   if (existing) {
     const userWins = source === "user";
@@ -106,4 +122,60 @@ export function listFacts(db: Db): FactRow[] {
        FROM facts WHERE is_deleted = 0 ORDER BY updated_at DESC`,
     )
     .all() as FactRow[];
+}
+
+/**
+ * Confidence as seen by injection: user-stated facts never decay; extracted facts
+ * keep full confidence for FACT_FRESH_DAYS after their last write/reinforcement,
+ * then decay exponentially. Facts drifting below the confidence threshold stop
+ * injecting but remain stored (and auditable) until pruned.
+ */
+export function effectiveConfidence(
+  fact: Pick<FactRow, "confidence" | "source" | "updated_at">,
+  nowMs: number = Date.now(),
+): number {
+  if (fact.source === "user") return fact.confidence;
+  const ageDays = Math.max(0, (nowMs - Date.parse(fact.updated_at)) / 86_400_000) || 0;
+  if (ageDays <= FACT_FRESH_DAYS) return fact.confidence;
+  return fact.confidence * Math.exp(-FACT_DECAY_RATE * (ageDays - FACT_FRESH_DAYS));
+}
+
+export interface StaleFact extends FactRow {
+  days_since_reinforced: number;
+  effective_confidence: number;
+}
+
+/** Extracted facts not reinforced for `olderThanDays` — the clawmark_review surface. */
+export function staleFacts(db: Db, olderThanDays: number = FACT_FRESH_DAYS, nowMs: number = Date.now()): StaleFact[] {
+  const cutoff = new Date(nowMs - olderThanDays * 86_400_000).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT key, value, confidence, source, created_at, updated_at
+       FROM facts WHERE is_deleted = 0 AND source = 'extracted' AND updated_at < ?
+       ORDER BY updated_at ASC`,
+    )
+    .all(cutoff) as FactRow[];
+  return rows.map((row) => ({
+    ...row,
+    days_since_reinforced: Math.floor((nowMs - Date.parse(row.updated_at)) / 86_400_000),
+    effective_confidence: Number(effectiveConfidence(row, nowMs).toFixed(3)),
+  }));
+}
+
+/** Tombstone extracted facts unreinforced past FACT_PRUNE_DAYS. Returns pruned count. */
+export function pruneStaleFacts(db: Db, nowMs: number = Date.now()): number {
+  const cutoff = new Date(nowMs - FACT_PRUNE_DAYS * 86_400_000).toISOString();
+  const doomed = db
+    .prepare("SELECT key, value FROM facts WHERE is_deleted = 0 AND source = 'extracted' AND updated_at < ?")
+    .all(cutoff) as { key: string; value: string }[];
+  if (doomed.length === 0) return 0;
+  const prune = db.transaction(() => {
+    const stmt = db.prepare("UPDATE facts SET is_deleted = 1, updated_at = ? WHERE key = ?");
+    for (const fact of doomed) {
+      stmt.run(new Date().toISOString(), fact.key);
+      logEvent(db, { eventType: "delete", memoryKey: fact.key, oldValue: fact.value, source: "decay" });
+    }
+  });
+  prune();
+  return doomed.length;
 }
