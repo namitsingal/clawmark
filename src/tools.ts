@@ -2,7 +2,7 @@ import { Type } from "@sinclair/typebox";
 import type { ClawmarkConfig } from "./config.js";
 import type { Db } from "./db.js";
 import type { EmbeddingClient } from "./embeddings.js";
-import { deleteFact, listFacts, setFact } from "./facts.js";
+import { deleteFact, listFacts, setFact, staleFacts } from "./facts.js";
 import { recall } from "./recall.js";
 import type { MessageSource } from "./sources/source.js";
 
@@ -79,6 +79,30 @@ export function buildTools(getRuntime: () => ClawmarkRuntime | null) {
           facts: facts.map((f) => ({ key: f.key, value: f.value, confidence: f.confidence })),
           recalled: excerpts.map((r) => ({ date: r.ts.slice(0, 10), role: r.role, excerpt: r.excerpt })),
         });
+      },
+    },
+    {
+      name: "clawmark_review",
+      label: "Clawmark: review stale facts",
+      description:
+        "List extracted facts that haven't been reinforced recently and are decaying " +
+        "toward exclusion from context. Confirm each with the user: clawmark_set to " +
+        "refresh a fact that's still true, clawmark_forget to drop one that isn't.",
+      parameters: Type.Object({
+        days: Type.Optional(Type.Number({ description: "Minimum days since last reinforcement (default 90)" })),
+      }),
+      async execute(_id: string, params: { days?: number }): Promise<ToolResult> {
+        const { db } = requireRuntime();
+        const stale = staleFacts(db, params.days);
+        if (stale.length === 0) return text("No stale facts — everything has been reinforced recently.");
+        return text(
+          stale.map((f) => ({
+            key: f.key,
+            value: f.value,
+            days_since_reinforced: f.days_since_reinforced,
+            effective_confidence: f.effective_confidence,
+          })),
+        );
       },
     },
     {

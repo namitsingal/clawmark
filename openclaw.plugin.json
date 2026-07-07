@@ -2,8 +2,8 @@
   "id": "clawmark",
   "name": "Clawmark",
   "description": "Durable facts and semantic recall for OpenClaw, derived from the message history you already keep. No duplicate message store; crash-safe by design.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "contracts": {
-    "tools": ["clawmark_set", "clawmark_search", "clawmark_forget"]
+    "tools": ["clawmark_set", "clawmark_search", "clawmark_review", "clawmark_forget"]
   }
 }
