@@ -82,7 +82,25 @@ incomplete it stays inert and logs the missing variable — it never breaks the 
 
 - `clawmark_set(key, value)` — remember a fact explicitly. User-set facts always win.
 - `clawmark_search(query, limit?)` — search facts + recall excerpts from past sessions.
+- `clawmark_review(days?)` — list extracted facts that haven't been reinforced recently,
+  so the agent can confirm them with you before they decay out.
 - `clawmark_forget(key)` — delete a fact.
+
+## Fact lifecycle — reinforcement, not TTL
+
+Facts don't expire on a clock: "prefers tabs" is true for years, "the deck is due
+Friday" was stale in a week. So Clawmark uses **reinforcement** as the staleness signal
+instead of time-to-live:
+
+- When the extractor re-observes an unchanged fact, its decay clock resets (logged as a
+  `reinforce` audit event) — facts that keep coming up stay fresh forever.
+- Extracted facts unreinforced for **90 days** start losing *effective* confidence
+  (exponential decay). Once below the confidence threshold they stop being injected —
+  but remain stored and auditable.
+- After **365 days** without reinforcement they're tombstoned (audit event `delete`,
+  source `decay`).
+- **User-stated facts never decay.** If you said it explicitly, it stays until you
+  `clawmark_forget` it.
 
 ## Security model
 
