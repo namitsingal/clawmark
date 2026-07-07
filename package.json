@@ -1,0 +1,51 @@
+{
+  "name": "openclaw-clawmark",
+  "version": "0.1.0",
+  "description": "Clawmark — durable facts and semantic recall for OpenClaw, derived from the message history you already keep. No duplicate message store; crash-safe by design.",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:namitsingal/clawmark",
+  "keywords": [
+    "openclaw",
+    "openclaw-plugin",
+    "memory",
+    "recall",
+    "embeddings"
+  ],
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "openclaw.plugin.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "openclaw": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.5.28"
+  },
+  "peerDependenciesMeta": {
+    "openclaw": {
+      "optional": false
+    }
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.49",
+    "better-sqlite3": "^12.2.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.0.0",
+    "openclaw": "2026.6.11",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+*.db
+*.db-wal
+*.db-shm
+*.tgz
+
+# internal working docs (not part of the release)
+PLAN.md
+DISCOVERY.md
