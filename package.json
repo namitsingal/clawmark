@@ -1,6 +1,6 @@
 {
   "name": "openclaw-clawmark",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Clawmark — durable facts and semantic recall for OpenClaw, derived from the message history you already keep. No duplicate message store; crash-safe by design.",
   "type": "module",
   "license": "MIT",
