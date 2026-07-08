@@ -25,12 +25,20 @@ export interface ClawmarkRuntime {
   config: ClawmarkConfig;
 }
 
+export interface JobsResult {
+  indexed: number;
+  written: number;
+  pruned: number;
+}
+
+export type RunJobsFn = (opts?: { drain?: boolean }) => Promise<JobsResult | null>;
+
 /**
  * Tool definitions in the OpenClaw AgentTool shape. `clawmark_` prefix avoids
  * collisions with native memory tools and other memory plugins. Runtime is resolved
  * lazily so tools registered before gateway_start still work.
  */
-export function buildTools(getRuntime: () => ClawmarkRuntime | null) {
+export function buildTools(getRuntime: () => ClawmarkRuntime | null, runJobs: RunJobsFn) {
   const requireRuntime = (): ClawmarkRuntime => {
     const rt = getRuntime();
     if (!rt) throw new Error("Clawmark is not initialized (gateway not started or config invalid)");
@@ -79,6 +87,32 @@ export function buildTools(getRuntime: () => ClawmarkRuntime | null) {
           facts: facts.map((f) => ({ key: f.key, value: f.value, confidence: f.confidence })),
           recalled: excerpts.map((r) => ({ date: r.ts.slice(0, 10), role: r.role, excerpt: r.excerpt })),
         });
+      },
+    },
+    {
+      name: "clawmark_reconcile",
+      label: "Clawmark: reconcile memory now",
+      description:
+        "Force the background memory jobs to run immediately instead of waiting for the " +
+        "message-count or idle triggers: index new messages into the recall store, " +
+        "extract durable facts from un-processed conversation, and prune stale facts. " +
+        "Use when the user asks to sync/reconcile/refresh memory or after an important " +
+        "conversation they want captured right away.",
+      parameters: Type.Object({
+        drain: Type.Optional(
+          Type.Boolean({ description: "Process the entire backlog (default true); false = one incremental pass" }),
+        ),
+      }),
+      async execute(_id: string, params: { drain?: boolean }): Promise<ToolResult> {
+        requireRuntime();
+        const result = await runJobs({ drain: params.drain ?? true });
+        if (result === null) {
+          return text("Reconcile already in progress (or plugin not initialized) — try again shortly.");
+        }
+        return text(
+          `Reconciled: indexed ${result.indexed} new messages, extracted ${result.written} facts, ` +
+            `pruned ${result.pruned} stale facts.`,
+        );
       },
     },
     {

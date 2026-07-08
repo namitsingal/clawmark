@@ -10,7 +10,7 @@ import { pruneStaleFacts } from "./facts.js";
 import { runExtractor } from "./extractor.js";
 import { runIndexer } from "./indexer.js";
 import { type MessageSource, selectSource } from "./sources/source.js";
-import { buildTools, type ClawmarkRuntime } from "./tools.js";
+import { buildTools, type ClawmarkRuntime, type JobsResult } from "./tools.js";
 
 const IDLE_TICK_MS = 10 * 60 * 1000;
 
@@ -32,8 +32,8 @@ const entry: PluginEntry = definePluginEntry({
     let lastActivity = Date.now();
     let jobsRunning = false;
 
-    const runJobs = async (opts: { drain?: boolean } = {}): Promise<void> => {
-      if (!runtime || jobsRunning) return;
+    const runJobs = async (opts: { drain?: boolean } = {}): Promise<JobsResult | null> => {
+      if (!runtime || jobsRunning) return null;
       jobsRunning = true;
       try {
         const { db, source, embedder, config } = runtime;
@@ -41,13 +41,16 @@ const entry: PluginEntry = definePluginEntry({
         const extracted = await runExtractor(db, source, config, opts);
         const pruned = pruneStaleFacts(db);
         rotateEvents(db);
-        if (indexed.indexed > 0 || extracted.written > 0 || pruned > 0) {
+        const result: JobsResult = { indexed: indexed.indexed, written: extracted.written, pruned };
+        if (result.indexed > 0 || result.written > 0 || result.pruned > 0) {
           log.info(
-            `jobs: indexed ${indexed.indexed} messages, wrote ${extracted.written} facts, pruned ${pruned} stale facts`,
+            `jobs: indexed ${result.indexed} messages, wrote ${result.written} facts, pruned ${result.pruned} stale facts`,
           );
         }
+        return result;
       } catch (err) {
         log.error(`background jobs failed: ${String(err)}`);
+        return null;
       } finally {
         jobsRunning = false;
       }
@@ -147,7 +150,10 @@ const entry: PluginEntry = definePluginEntry({
       }
     });
 
-    for (const tool of buildTools(() => runtime)) {
+    for (const tool of buildTools(
+      () => runtime,
+      (opts) => runJobs(opts),
+    )) {
       try {
         // Cast: our minimal ToolResult structurally matches AgentToolResult.
         api.registerTool(tool as Parameters<typeof api.registerTool>[0], { optional: true });
